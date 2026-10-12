@@ -15,8 +15,12 @@ import AdsPanel from './components/AdsPanel';
 import CrossPanel from './components/CrossPanel';
 import AiPanel from './components/AiPanel';
 import DocsPanel from './components/DocsPanel';
+import SqpHistoryPanel from './components/SqpHistoryPanel';
+import {useAuth} from './auth';
+import {saveSqpReport} from './sqpReports';
 
 export default function App() {
+  const {accessToken, user} = useAuth();
   const [isLocked, setIsLocked] = useState(false);
   const hasMounted = useRef(false);
 
@@ -116,7 +120,7 @@ export default function App() {
     };
   }, []);
 
-  const [activeTab, setActiveTab ] = useState<'sqp' | 'ads' | 'cross' | 'ai' | 'docs'>('sqp');
+  const [activeTab, setActiveTab ] = useState<'sqp' | 'ads' | 'cross' | 'ai' | 'docs' | 'history'>('sqp');
 
   // Shared master datasets
   const [sqpRows, setSqpRows] = useState<SQPRow[]>([]);
@@ -139,6 +143,7 @@ export default function App() {
     { id: 'cross', label: '↕ 交叉融合矩阵 (Cross策略)', count: crossRows.length, icon: GitCompare },
     { id: 'ai', label: '🤖 AI 智能分析助理', count: 0, icon: Sparkles },
     { id: 'docs', label: '📖 说明与自动打标逻辑', count: 0, icon: FileText },
+    { id: 'history', label: '🗂️ 历史分析', count: 0, icon: FileText },
   ] as const;
 
   if (isLocked) {
@@ -284,6 +289,7 @@ export default function App() {
                 // Reset cross tab if base data expands/collapses
                 setCrossRows([]);
               }}
+              onSaveReport={(file, asin, marketplace, period, rows) => saveSqpReport(accessToken, user.id, file, asin, marketplace, period, rows)}
             />
           </div>
 
@@ -329,6 +335,9 @@ export default function App() {
 
           <div className={activeTab === 'docs' ? 'block' : 'hidden'}>
             <DocsPanel />
+          </div>
+          <div className={activeTab === 'history' ? 'block' : 'hidden'}>
+            <SqpHistoryPanel onOpen={rows => { setSqpRows(rows); setActiveTab('sqp'); }} />
           </div>
         </div>
       </main>

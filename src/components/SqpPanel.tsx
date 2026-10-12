@@ -28,6 +28,7 @@ import {
 } from 'recharts';
 import { SQPRow, CompareRow } from '../types';
 import { cleanNum, cleanPct, cleanSqpShare, parsePriceStr, getDiagnosis, getTrendInterpretation } from '../utils/analyzers';
+import type {SqpMarketplace} from '../sqpReports';
 
 // Common Amazon English catalog stopwords to filter noise
 const STOP_WORDS = new Set([
@@ -231,6 +232,7 @@ interface SqpPanelProps {
   firstColWidth: number;
   setFirstColWidth: (w: number) => void;
   onDataLoaded: () => void;
+  onSaveReport: (file: File, asin: string, marketplace: string, period: string, rows: SQPRow[]) => Promise<void>;
 }
 
 export default function SqpPanel({
@@ -240,11 +242,15 @@ export default function SqpPanel({
   setCompareRows,
   firstColWidth,
   setFirstColWidth,
-  onDataLoaded
+  onDataLoaded,
+  onSaveReport,
 }: SqpPanelProps) {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [compareFile, setCompareFile] = useState<File | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>('');
+  const [marketplace, setMarketplace] = useState<SqpMarketplace>('US');
+  const [period, setPeriod] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false);
   const [compareStatus, setCompareStatus] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -1485,7 +1491,7 @@ export default function SqpPanel({
     );
   };
 
-  const generateReport = () => {
+  const generateReport = async () => {
     const raw = sqpRawCache;
     if (raw.length === 0) {
       setCurrentStatus('⚠️ 请先成功解析属于当前时段的 SQP CSV 报表');
@@ -1551,10 +1557,31 @@ export default function SqpPanel({
       };
     });
 
+    const detectedAsins = [...new Set(processed.map(row => row.asin).filter(asin => asin && asin !== '未标注'))];
+    if (!currentFile) {
+      setCurrentStatus('请先选择当前 SQP 文件。');
+      return;
+    }
+    if (!detectedAsins.length) {
+      setCurrentStatus('文件中没有识别到 ASIN，请确认上传的是 Amazon Search Query Performance 原始报表。');
+      return;
+    }
+    setSaveBusy(true);
+    try {
+      for (const asin of detectedAsins) {
+        const asinRows = processed.filter(row => row.asin === asin);
+        await onSaveReport(currentFile, asin, marketplace, period, asinRows);
+      }
+    } catch (error) {
+      setCurrentStatus(`云端保存失败：${error instanceof Error ? error.message : '请重试'}`);
+      setSaveBusy(false);
+      return;
+    }
+    setSaveBusy(false);
     setSqpRows(processed);
     onDataLoaded();
     setSqpLimit(100);
-    setCurrentStatus('🚀 占比诊断报告已动态生成！可由下方仪表盘、对比栏进行操作。');
+    setCurrentStatus(`🚀 分析已生成并保存 ${detectedAsins.length} 个 ASIN 记录，可在“历史分析”中重新打开。`);
   };
 
   const generateCompareReport = () => {
@@ -2102,6 +2129,10 @@ export default function SqpPanel({
               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
               1. 上传当前数据段 SQP Excel 或 CSV
             </h3>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-xs text-slate-600">站点<select value={marketplace} onChange={e => setMarketplace(e.target.value as SqpMarketplace)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-2"><option value="US">美国 US</option><option value="CA">加拿大 CA</option><option value="UK">英国 UK</option><option value="DE">德国 DE</option><option value="FR">法国 FR</option><option value="IT">意大利 IT</option><option value="ES">西班牙 ES</option><option value="JP">日本 JP</option><option value="MX">墨西哥 MX</option><option value="AU">澳大利亚 AU</option></select></label>
+              <label className="text-xs text-slate-600">分析周期（可选）<input value={period} onChange={e => setPeriod(e.target.value)} placeholder="如 2026-W41" className="mt-1 w-full rounded-md border border-slate-200 px-2 py-2" /></label>
+            </div>
             <label className="group flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-5 cursor-pointer bg-slate-50/50 hover:bg-blue-50/20 hover:border-blue-400 transition-all">
               <FileText className="w-8 h-8 text-slate-400 group-hover:text-blue-500 transition-colors mb-2" />
               <span className="text-xs font-semibold text-slate-600 group-hover:text-blue-600 transition-colors">
@@ -2123,12 +2154,12 @@ export default function SqpPanel({
               </span>
               <button 
                 onClick={generateReport}
-                disabled={!currentFile}
+                disabled={!currentFile || saveBusy}
                 className={`px-3 py-1.5 rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-all ${
-                  currentFile ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  currentFile && !saveBusy ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5" /> 生成中段诊断报告
+                <Sparkles className="w-3.5 h-3.5" /> {saveBusy ? '保存中…' : '生成并保存分析'}
               </button>
             </div>
           </div>

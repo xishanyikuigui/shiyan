@@ -3,7 +3,7 @@ import App from './App';
 
 type User = {id: string; email?: string};
 type Session = {access_token: string; refresh_token: string; expires_at?: number; expires_in?: number; user: User};
-type AuthValue = {user: User; signOut: () => Promise<void>};
+type AuthValue = {user: User; accessToken: string; signOut: () => Promise<void>};
 type Mode = 'login' | 'signup' | 'recover';
 
 const projectUrl = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
@@ -173,7 +173,7 @@ function AuthScreen() {
             <button onClick={() => {setMode('recover'); setError(''); setNotice('');}}>忘记密码</button>
           </> : <button onClick={() => {setMode('login'); setError(''); setNotice('');}}>返回登录</button>}
         </div>
-        <p className="mt-7 text-center text-xs leading-relaxed text-slate-500">密码由 Supabase Auth 安全管理。本工作台的数据文件仍在你的浏览器本地处理。</p>
+        <p className="mt-7 text-center text-xs leading-relaxed text-slate-500">密码由 Supabase Auth 安全管理。登录后上传的 SQP 分析将保存到云端，并向所有登录用户开放查看。</p>
       </section>
     </main>
   );
@@ -182,6 +182,7 @@ function AuthScreen() {
 function AuthenticatedApp({session}: {session: Session}) {
   const value = useMemo<AuthValue>(() => ({
     user: session.user,
+    accessToken: session.access_token,
     signOut: async () => {
       try { await authRequest('logout', undefined, session.access_token); } finally { storeSession(null); window.location.reload(); }
     },
@@ -192,6 +193,12 @@ function AuthenticatedApp({session}: {session: Session}) {
       <AccountMenu />
     </div>
   </AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const auth = useContext(AuthContext);
+  if (!auth) throw new Error('useAuth must be used inside AuthGate');
+  return auth;
 }
 
 function AccountMenu() {
